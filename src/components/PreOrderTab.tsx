@@ -392,7 +392,7 @@ export default function PreOrderTab({
                   <option value="" disabled>Pilih item dari daftar...</option>
                   {items.map((itm) => (
                     <option key={itm.id} value={itm.id}>
-                      {itm.name} (SKU: {itm.sku})
+                      {itm.name}
                     </option>
                   ))}
                 </select>
