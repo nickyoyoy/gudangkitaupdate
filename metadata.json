@@ -1,0 +1,6 @@
+{
+  "name": "GudangKita",
+  "description": "Dashboard Manajemen Gudang Terpadu untuk memantau stok, mencatat barang masuk dan keluar, serta mengelola pre-order.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
