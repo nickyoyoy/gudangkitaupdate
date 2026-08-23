@@ -20,6 +20,7 @@ import {
   deleteItemFromCloud,
   saveMutationToCloud,
   deleteMutationFromCloud,
+  batchDeleteMutationsFromCloud,
   savePreOrderToCloud,
   deletePreOrderFromCloud,
   saveNotificationToCloud,
@@ -509,6 +510,29 @@ export default function App() {
     setMutationToDelete(null);
   };
 
+  // Bulk delete history records without changing physical stock (Option A: pure log cleanup)
+  const handleBulkDeleteMutations = (mutationIds: string[]) => {
+    if (!mutationIds || mutationIds.length === 0) return;
+
+    setMutations((prev) => prev.filter((m) => !mutationIds.includes(m.id)));
+    batchDeleteMutationsFromCloud(mutationIds);
+
+    // Create system notification for cleanup record
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStrHour = `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
+    const newNotif: SystemNotification = {
+      id: `notif-bulk-del-${Date.now()}`,
+      title: '🧹 Riwayat Mutasi Dibersihkan',
+      message: `${mutationIds.length} catatan riwayat mutasi telah dihapus untuk mengoptimalkan performa. Stok fisik tetap aman.`,
+      type: 'info',
+      time: timeStrHour,
+      isRead: false,
+      linkToTab: 'summary',
+    };
+    setNotifications((prevNotifs) => [newNotif, ...prevNotifs]);
+    saveNotificationToCloud(newNotif);
+  };
+
   // Handler to delete a pre-order completely
   const handleDeletePreOrder = (poId: string) => {
     const targetPo = preOrders.find((p) => p.id === poId);
@@ -680,6 +704,7 @@ export default function App() {
             mutations={mutations}
             onAddMutation={handleAddMutation}
             onDeleteMutation={handleDeleteMutation}
+            onDeleteMutations={handleBulkDeleteMutations}
             onNavigate={setActiveTab}
           />
         )}
@@ -690,6 +715,7 @@ export default function App() {
             mutations={mutations}
             onAddMutation={handleAddMutation}
             onDeleteMutation={handleDeleteMutation}
+            onDeleteMutations={handleBulkDeleteMutations}
             onNavigate={setActiveTab}
           />
         )}
@@ -718,6 +744,8 @@ export default function App() {
           <SummaryTab
             items={items}
             mutations={mutations}
+            onDeleteMutation={handleDeleteMutation}
+            onDeleteMutations={handleBulkDeleteMutations}
             isReset={isReset}
           />
         )}

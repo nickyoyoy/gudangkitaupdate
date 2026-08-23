@@ -1,6 +1,5 @@
 import React from 'react';
 import { 
-  TrendingUp, 
   PlusCircle, 
   MinusCircle, 
   ChevronRight, 
@@ -21,14 +20,7 @@ interface BerandaTabProps {
 }
 
 export default function BerandaTab({ items, mutations, onNavigate, onDeleteMutation, currentUser = null, isReset = false }: BerandaTabProps) {
-  // Base offsets to match beautiful screenshot figures exactly and allow real-time updates!
-  const BASE_MASUK_OFFSET = isReset ? 0 : 1214; // 1214 + 70 initial = 1284
   const BASE_KELUAR_OFFSET = isReset ? 0 : 830;  // 830 + 12 initial = 842
-
-  // Dynamic calculations
-  const totalMasuk = BASE_MASUK_OFFSET + mutations
-    .filter((m) => m.type === 'masuk')
-    .reduce((sum, m) => sum + m.quantity, 0);
 
   const totalKeluar = BASE_KELUAR_OFFSET + mutations
     .filter((m) => m.type === 'keluar')
@@ -49,20 +41,6 @@ export default function BerandaTab({ items, mutations, onNavigate, onDeleteMutat
 
       {/* Bento Grid Stock Summary */}
       <div className="grid grid-cols-2 gap-4">
-        {/* Total Masuk (Daily) */}
-        <div className="col-span-2 p-4 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between transition-all hover:shadow-md">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold text-slate-400 tracking-wider uppercase">Total Masuk (Hari Ini)</p>
-            <p className="font-display text-3xl font-extrabold text-blue-600">
-              {totalMasuk.toLocaleString('id-ID')}{' '}
-              <span className="text-sm font-medium text-slate-400">Pcs</span>
-            </p>
-          </div>
-          <div className="w-12 h-12 bg-blue-100/80 rounded-full flex items-center justify-center text-blue-600">
-            <TrendingUp className="w-6 h-6" />
-          </div>
-        </div>
-
         {/* Total Keluar */}
         <div className="p-4 bg-white rounded-2xl shadow-sm border-l-4 border-blue-500 border-y border-r border-slate-100 space-y-2 transition-all hover:shadow-md">
           <p className="text-xs font-semibold text-slate-400 tracking-wider uppercase">Total Keluar</p>

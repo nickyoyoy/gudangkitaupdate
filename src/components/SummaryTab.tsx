@@ -11,17 +11,30 @@ import {
   Search,
   Filter,
   Calendar,
-  Download
+  Download,
+  Trash2,
+  CheckSquare,
+  Square,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { WarehouseItem, StockMutation } from '../types';
 
 interface SummaryTabProps {
   items: WarehouseItem[];
   mutations: StockMutation[];
+  onDeleteMutation?: (id: string) => void;
+  onDeleteMutations?: (ids: string[]) => void;
   isReset?: boolean;
 }
 
-export default function SummaryTab({ items, mutations, isReset = false }: SummaryTabProps) {
+export default function SummaryTab({ 
+  items, 
+  mutations, 
+  onDeleteMutation, 
+  onDeleteMutations, 
+  isReset = false 
+}: SummaryTabProps) {
   const [timeframe, setTimeframe] = useState<'harian' | 'bulanan'>('harian');
   const [categoryType, setCategoryType] = useState<'masuk' | 'keluar'>('masuk');
   const [hoveredIndex, setHoveredIndex] = useState<{ index: number; type: 'masuk' | 'keluar' } | null>(null);
@@ -30,6 +43,9 @@ export default function SummaryTab({ items, mutations, isReset = false }: Summar
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFlow, setSelectedFlow] = useState<'semua' | 'masuk' | 'keluar'>('semua');
   const [filterDate, setFilterDate] = useState<string>('semua');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [idsToDelete, setIdsToDelete] = useState<string[]>([]);
 
   // 1. Calculate live mutation aggregates
   const liveMasuk = mutations.filter(m => m.type === 'masuk').reduce((sum, m) => sum + m.quantity, 0);
@@ -253,6 +269,50 @@ export default function SummaryTab({ items, mutations, isReset = false }: Summar
     const fileName = `Laporan_Mutasi_GudangKita_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(workbook, fileName);
   };
+
+  // Selection handlers for history bulk deletion
+  const handleToggleSelectAll = () => {
+    if (filteredMutations.length === 0) return;
+    const allFilteredIds = filteredMutations.map(m => m.id);
+    const isAllSelected = allFilteredIds.every(id => selectedIds.includes(id));
+    if (isAllSelected) {
+      setSelectedIds(prev => prev.filter(id => !allFilteredIds.includes(id)));
+    } else {
+      setSelectedIds(Array.from(new Set([...selectedIds, ...allFilteredIds])));
+    }
+  };
+
+  const handleToggleSelectItem = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleOpenBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    setIdsToDelete(selectedIds);
+    setIsConfirmDeleteOpen(true);
+  };
+
+  const handleOpenSingleDelete = (id: string) => {
+    setIdsToDelete([id]);
+    setIsConfirmDeleteOpen(true);
+  };
+
+  const handleExecuteDelete = () => {
+    if (idsToDelete.length === 0) return;
+    if (onDeleteMutations) {
+      onDeleteMutations(idsToDelete);
+    } else if (onDeleteMutation) {
+      idsToDelete.forEach(id => onDeleteMutation(id));
+    }
+    setSelectedIds(prev => prev.filter(id => !idsToDelete.includes(id)));
+    setIdsToDelete([]);
+    setIsConfirmDeleteOpen(false);
+  };
+
+  const isAllFilteredSelected = filteredMutations.length > 0 && 
+    filteredMutations.every(m => selectedIds.includes(m.id));
 
   return (
     <div className="space-y-6">
@@ -495,6 +555,42 @@ export default function SummaryTab({ items, mutations, isReset = false }: Summar
           </div>
         </div>
 
+        {/* Bulk Selection Action Toolbar */}
+        {filteredMutations.length > 0 && (
+          <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-200/80 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={handleToggleSelectAll}
+              className="flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-blue-600 transition-colors focus:outline-none select-none"
+            >
+              {isAllFilteredSelected ? (
+                <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
+              ) : (
+                <Square className="w-4 h-4 text-slate-400 shrink-0" />
+              )}
+              <span>
+                {isAllFilteredSelected ? 'Batalkan Semua' : 'Pilih Semua'} ({filteredMutations.length})
+              </span>
+            </button>
+
+            {selectedIds.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200">
+                  {selectedIds.length} dipilih
+                </span>
+                <button
+                  type="button"
+                  onClick={handleOpenBulkDelete}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs focus:outline-none animate-in zoom-in-95 duration-150"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus ({selectedIds.length})</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Mutasi List Grouped by Date */}
         {sortedDateKeys.length === 0 ? (
           <div className="text-center py-10 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-slate-400">
@@ -525,15 +621,38 @@ export default function SummaryTab({ items, mutations, isReset = false }: Summar
                   <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden bg-white">
                     {dateMutations.map(m => {
                       const isMasuk = m.type === 'masuk';
+                      const isSelected = selectedIds.includes(m.id);
                       return (
-                        <div key={m.id} className="flex items-center justify-between p-3.5 hover:bg-slate-50/40 transition-colors">
-                          <div className="flex items-center gap-3 min-w-0">
+                        <div 
+                          key={m.id} 
+                          className={`flex items-center justify-between p-3.5 transition-colors ${
+                            isSelected ? 'bg-blue-50/30' : 'hover:bg-slate-50/40'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            {/* Row selection checkbox */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSelectItem(m.id)}
+                              className="p-1 text-slate-400 hover:text-blue-600 focus:outline-none shrink-0"
+                              title={isSelected ? 'Batalkan pilihan' : 'Pilih item'}
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-blue-600" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-300" />
+                              )}
+                            </button>
+
                             {/* Direction Tag icon */}
                             <span className={`p-1.5 rounded-lg shrink-0 ${isMasuk ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
                               {isMasuk ? <PlusCircle className="w-3.5 h-3.5" /> : <MinusCircle className="w-3.5 h-3.5" />}
                             </span>
 
-                            <div className="min-w-0">
+                            <div 
+                              className="min-w-0 flex-1 cursor-pointer"
+                              onClick={() => handleToggleSelectItem(m.id)}
+                            >
                               <h4 className="text-xs font-bold text-slate-800 truncate leading-tight">
                                 {m.itemName}
                               </h4>
@@ -543,10 +662,20 @@ export default function SummaryTab({ items, mutations, isReset = false }: Summar
                             </div>
                           </div>
 
-                          <div className="text-right shrink-0">
+                          <div className="flex items-center gap-2 shrink-0">
                             <span className={`text-xs font-bold font-mono ${isMasuk ? 'text-emerald-600' : 'text-blue-600'}`}>
                               {isMasuk ? '+' : '-'}{m.quantity} Pcs
                             </span>
+
+                            {/* Single delete button */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSingleDelete(m.id)}
+                              className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none ml-1"
+                              title="Hapus riwayat mutasi ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
                       );
@@ -629,6 +758,52 @@ export default function SummaryTab({ items, mutations, isReset = false }: Summar
           </div>
         </div>
       </section>
+
+      {/* Confirmation Modal for Deleting Mutation History from Summary */}
+      {isConfirmDeleteOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-xl animate-in zoom-in-95 duration-200 text-slate-800 border border-slate-100">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center border border-rose-100/50 mb-3.5">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="font-display text-base font-bold text-slate-900 mb-1.5">
+                Hapus {idsToDelete.length} Catatan Riwayat Mutasi?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed mb-4 font-sans">
+                Catatan riwayat yang dipilih akan dihapus secara permanen dari daftar log untuk meringankan data.
+              </p>
+
+              <div className="w-full bg-emerald-50/60 border border-emerald-100/80 rounded-2xl p-3 text-left font-sans text-xs text-emerald-800 space-y-1.5 mb-5">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Stok Fisik Aman (Tidak Berubah)</span>
+                </div>
+                <p className="text-[11px] text-emerald-700 leading-tight">
+                  Jumlah stok barang di gudang saat ini akan tetap sama dan tidak mengalami perubahan.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 w-full font-sans">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmDeleteOpen(false)}
+                  className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors focus:outline-none"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDelete}
+                  className="py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors focus:outline-none shadow-md shadow-rose-500/10"
+                >
+                  Ya, Hapus ({idsToDelete.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

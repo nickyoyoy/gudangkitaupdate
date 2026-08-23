@@ -147,6 +147,18 @@ export async function deleteMutationFromCloud(mutationId: string) {
   }
 }
 
+export async function batchDeleteMutationsFromCloud(mutationIds: string[]) {
+  try {
+    const batch = writeBatch(db);
+    mutationIds.forEach((id) => {
+      batch.delete(doc(db, 'mutations', id));
+    });
+    await batch.commit();
+  } catch (error) {
+    console.error('Error batch deleting mutations from cloud:', error);
+  }
+}
+
 // 3. PreOrders helper functions
 export async function savePreOrderToCloud(preOrder: PreOrder) {
   try {

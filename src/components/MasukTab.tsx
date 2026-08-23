@@ -12,7 +12,11 @@ import {
   Trash2, 
   Calendar, 
   Filter, 
-  ArrowDownLeft 
+  ArrowDownLeft,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 import { WarehouseItem, StockMutation } from '../types';
 
@@ -20,7 +24,8 @@ interface MasukTabProps {
   items: WarehouseItem[];
   mutations: StockMutation[];
   onAddMutation: (mutation: Omit<StockMutation, 'id' | 'time' | 'date'>) => void;
-  onDeleteMutation: (id: string) => void;
+  onDeleteMutation?: (id: string) => void;
+  onDeleteMutations?: (ids: string[]) => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -29,6 +34,7 @@ export default function MasukTab({
   mutations, 
   onAddMutation, 
   onDeleteMutation, 
+  onDeleteMutations,
   onNavigate 
 }: MasukTabProps) {
   const [subTab, setSubTab] = useState<'form' | 'history'>('form');
@@ -39,9 +45,12 @@ export default function MasukTab({
   const [pic, setPic] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success'>('idle');
 
-  // History state filter
+  // History state filter & bulk selection
   const [search, setSearch] = useState('');
   const [selectedFilterItem, setSelectedFilterItem] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [idsToDelete, setIdsToDelete] = useState<string[]>([]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,6 +102,50 @@ export default function MasukTab({
 
   // Simple statistics
   const totalInboundQty = filteredMutations.reduce((sum, m) => sum + m.quantity, 0);
+
+  // Selection handlers
+  const handleToggleSelectAll = () => {
+    if (filteredMutations.length === 0) return;
+    const allFilteredIds = filteredMutations.map(m => m.id);
+    const isAllSelected = allFilteredIds.every(id => selectedIds.includes(id));
+    if (isAllSelected) {
+      setSelectedIds(prev => prev.filter(id => !allFilteredIds.includes(id)));
+    } else {
+      setSelectedIds(Array.from(new Set([...selectedIds, ...allFilteredIds])));
+    }
+  };
+
+  const handleToggleSelectItem = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleOpenBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    setIdsToDelete(selectedIds);
+    setIsConfirmDeleteOpen(true);
+  };
+
+  const handleOpenSingleDelete = (id: string) => {
+    setIdsToDelete([id]);
+    setIsConfirmDeleteOpen(true);
+  };
+
+  const handleExecuteDelete = () => {
+    if (idsToDelete.length === 0) return;
+    if (onDeleteMutations) {
+      onDeleteMutations(idsToDelete);
+    } else if (onDeleteMutation) {
+      idsToDelete.forEach(id => onDeleteMutation(id));
+    }
+    setSelectedIds(prev => prev.filter(id => !idsToDelete.includes(id)));
+    setIdsToDelete([]);
+    setIsConfirmDeleteOpen(false);
+  };
+
+  const isAllFilteredSelected = filteredMutations.length > 0 && 
+    filteredMutations.every(m => selectedIds.includes(m.id));
 
   return (
     <div className="max-w-md mx-auto space-y-5">
@@ -321,58 +374,122 @@ export default function MasukTab({
             </div>
           </div>
 
+          {/* Bulk Selection Action Toolbar */}
+          {filteredMutations.length > 0 && (
+            <div className="bg-white rounded-2xl p-3 shadow-xs border border-slate-100 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={handleToggleSelectAll}
+                className="flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-blue-600 transition-colors focus:outline-none select-none"
+              >
+                {isAllFilteredSelected ? (
+                  <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                )}
+                <span>
+                  {isAllFilteredSelected ? 'Batalkan Semua' : 'Pilih Semua'} ({filteredMutations.length})
+                </span>
+              </button>
+
+              {selectedIds.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+                    {selectedIds.length} dipilih
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleOpenBulkDelete}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs focus:outline-none animate-in zoom-in-95 duration-150"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus ({selectedIds.length})</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Mutation List View */}
           <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
             {filteredMutations.length > 0 ? (
-              filteredMutations.map((mut) => (
-                <div
-                  key={mut.id}
-                  className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-xs flex items-center justify-between gap-3 hover:border-slate-200 transition-colors"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-mono text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-100">
-                        <ArrowDownLeft className="w-2.5 h-2.5 shrink-0" />
-                        <span>MASUK</span>
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-400">
-                        {mut.id.replace('mut-', '#')}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1 whitespace-nowrap">
-                        <Calendar className="w-3 h-3 text-slate-400 opacity-60" />
-                        {mut.date} @ {mut.time}
-                      </span>
-                    </div>
-
-                    <h4 className="font-display font-bold text-sm text-slate-800 truncate leading-tight">
-                      {mut.itemName}
-                    </h4>
-
-                    <div className="text-[11px] text-slate-500 font-sans mt-1 flex items-center gap-1">
-                      <User className="w-3.5 h-3.5 text-slate-400 opacity-65" />
-                      <span>PIC: <strong className="text-slate-600 font-semibold">{mut.pic}</strong></span>
-                    </div>
-                  </div>
-
-                  <div className="text-right flex flex-col items-end gap-2 shrink-0">
-                    <div className="bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
-                      <span className="font-display font-black text-sm text-emerald-700">
-                        +{mut.quantity}
-                      </span>
-                      <span className="text-[9px] font-bold text-emerald-500 block">Pcs</span>
-                    </div>
-
-                    {/* Delete cancellation option */}
+              filteredMutations.map((mut) => {
+                const isSelected = selectedIds.includes(mut.id);
+                return (
+                  <div
+                    key={mut.id}
+                    className={`bg-white p-3.5 rounded-xl border shadow-xs flex items-center justify-between gap-3 transition-all ${
+                      isSelected 
+                        ? 'border-blue-500 bg-blue-50/20 ring-1 ring-blue-500/30' 
+                        : 'border-slate-100 hover:border-slate-200'
+                    }`}
+                  >
+                    {/* Checkbox selector */}
                     <button
-                      onClick={() => onDeleteMutation(mut.id)}
-                      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none"
-                      title="Batalkan mutasi masuk"
+                      type="button"
+                      onClick={() => handleToggleSelectItem(mut.id)}
+                      className="p-1 text-slate-400 hover:text-blue-600 focus:outline-none shrink-0"
+                      title={isSelected ? 'Batalkan pilihan' : 'Pilih item'}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {isSelected ? (
+                        <CheckSquare className="w-4 h-4 text-blue-600" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-300" />
+                      )}
                     </button>
+
+                    <div 
+                      className="min-w-0 flex-1 cursor-pointer"
+                      onClick={() => handleToggleSelectItem(mut.id)}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-mono text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <ArrowDownLeft className="w-2.5 h-2.5 shrink-0" />
+                          <span>MASUK</span>
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          {mut.id.replace('mut-', '#')}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1 whitespace-nowrap">
+                          <Calendar className="w-3 h-3 text-slate-400 opacity-60" />
+                          {mut.date} @ {mut.time}
+                        </span>
+                      </div>
+
+                      <h4 className="font-display font-bold text-sm text-slate-800 truncate leading-tight">
+                        {mut.itemName}
+                      </h4>
+
+                      <div className="text-[11px] text-slate-500 font-sans mt-1 flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-slate-400 opacity-65" />
+                        <span>PIC: <strong className="text-slate-600 font-semibold">{mut.pic}</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="text-right flex flex-col items-end gap-2 shrink-0">
+                      <div className="bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+                        <span className="font-display font-black text-sm text-emerald-700">
+                          +{mut.quantity}
+                        </span>
+                        <span className="text-[9px] font-bold text-emerald-500 block">Pcs</span>
+                      </div>
+
+                      {/* Single delete option */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenSingleDelete(mut.id);
+                        }}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none"
+                        title="Hapus riwayat mutasi ini"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="bg-white p-8 rounded-2xl border border-slate-100 text-center space-y-2">
                 <History className="w-8 h-8 text-slate-300 mx-auto opacity-70" />
@@ -388,6 +505,52 @@ export default function MasukTab({
                 </p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Deleting History Log */}
+      {isConfirmDeleteOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-xl animate-in zoom-in-95 duration-200 text-slate-800 border border-slate-100">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center border border-rose-100/50 mb-3.5">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="font-display text-base font-bold text-slate-900 mb-1.5">
+                Hapus {idsToDelete.length} Catatan Riwayat Masuk?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed mb-4 font-sans">
+                Catatan riwayat yang dipilih akan dihapus secara permanen dari daftar log untuk meringankan data.
+              </p>
+
+              <div className="w-full bg-emerald-50/60 border border-emerald-100/80 rounded-2xl p-3 text-left font-sans text-xs text-emerald-800 space-y-1.5 mb-5">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Stok Fisik Aman (Tidak Berubah)</span>
+                </div>
+                <p className="text-[11px] text-emerald-700 leading-tight">
+                  Jumlah stok barang di gudang saat ini akan tetap sama dan tidak mengalami pengurangan.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 w-full font-sans">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmDeleteOpen(false)}
+                  className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors focus:outline-none"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDelete}
+                  className="py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors focus:outline-none shadow-md shadow-rose-500/10"
+                >
+                  Ya, Hapus ({idsToDelete.length})
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
