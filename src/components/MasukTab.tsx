@@ -16,14 +16,17 @@ import {
   CheckSquare,
   Square,
   AlertTriangle,
+  Edit3,
   X
 } from 'lucide-react';
 import { WarehouseItem, StockMutation } from '../types';
+import EditMutationModal from './EditMutationModal';
 
 interface MasukTabProps {
   items: WarehouseItem[];
   mutations: StockMutation[];
   onAddMutation: (mutation: Omit<StockMutation, 'id' | 'time' | 'date'>) => void;
+  onEditMutation?: (mutation: StockMutation) => void;
   onDeleteMutation?: (id: string) => void;
   onDeleteMutations?: (ids: string[]) => void;
   onNavigate: (tab: string) => void;
@@ -33,6 +36,7 @@ export default function MasukTab({
   items, 
   mutations, 
   onAddMutation, 
+  onEditMutation,
   onDeleteMutation, 
   onDeleteMutations,
   onNavigate 
@@ -51,6 +55,10 @@ export default function MasukTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [idsToDelete, setIdsToDelete] = useState<string[]>([]);
+
+  // Edit mutation state
+  const [editingMutation, setEditingMutation] = useState<StockMutation | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,6 +138,17 @@ export default function MasukTab({
   const handleOpenSingleDelete = (id: string) => {
     setIdsToDelete([id]);
     setIsConfirmDeleteOpen(true);
+  };
+
+  const handleOpenEdit = (mut: StockMutation) => {
+    setEditingMutation(mut);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEdit = (updatedMut: StockMutation) => {
+    if (onEditMutation) {
+      onEditMutation(updatedMut);
+    }
   };
 
   const handleExecuteDelete = () => {
@@ -474,18 +493,31 @@ export default function MasukTab({
                         <span className="text-[9px] font-bold text-emerald-500 block">Pcs</span>
                       </div>
 
-                      {/* Single delete option */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenSingleDelete(mut.id);
-                        }}
-                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none"
-                        title="Hapus riwayat mutasi ini"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {/* Row action buttons: Edit / Koreksi & Delete */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEdit(mut);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none"
+                          title="Koreksi / Edit transaksi masuk ini"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenSingleDelete(mut.id);
+                          }}
+                          className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors focus:outline-none"
+                          title="Hapus riwayat mutasi ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -554,6 +586,18 @@ export default function MasukTab({
           </div>
         </div>
       )}
+
+      {/* Modal for Editing / Correcting Inbound Mutation */}
+      <EditMutationModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingMutation(null);
+        }}
+        mutation={editingMutation}
+        item={items.find((itm) => itm.id === editingMutation?.itemId)}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
 }

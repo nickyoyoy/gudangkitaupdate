@@ -1,15 +1,41 @@
 import React, { useState } from 'react';
-import { Search, Filter, AlertTriangle, CheckCircle, ShieldAlert, Navigation, QrCode, X, Plus, Minus, Edit, Check, TrendingUp, Clock, HelpCircle } from 'lucide-react';
+import { 
+  Search, 
+  Filter, 
+  AlertTriangle, 
+  CheckCircle, 
+  ShieldAlert, 
+  Navigation, 
+  QrCode, 
+  X, 
+  Plus, 
+  Minus, 
+  Edit, 
+  Check, 
+  TrendingUp, 
+  Clock, 
+  HelpCircle,
+  ClipboardCheck,
+  Layers
+} from 'lucide-react';
 import { WarehouseItem, StockMutation } from '../types';
+import StockOpnameModal from './StockOpnameModal';
 
 interface StokTabProps {
   items: WarehouseItem[];
   mutations: StockMutation[];
   onUpdateItemStock: (itemId: string, newStock: number) => void;
   onUpdateItemRack: (itemId: string, newRack: string) => void;
+  onStockOpname?: (itemId: string, actualStock: number, pic: string, notes: string) => void;
 }
 
-export default function StokTab({ items, mutations, onUpdateItemStock, onUpdateItemRack }: StokTabProps) {
+export default function StokTab({ 
+  items, 
+  mutations, 
+  onUpdateItemStock, 
+  onUpdateItemRack,
+  onStockOpname 
+}: StokTabProps) {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<'Semua' | 'Kritis' | 'Rendah' | 'Aman'>('Semua');
 
@@ -20,6 +46,10 @@ export default function StokTab({ items, mutations, onUpdateItemStock, onUpdateI
   const [showScanner, setShowScanner] = useState(false);
   const [selectedScanItemId, setSelectedScanItemId] = useState('');
   const [scanQtyChange, setScanQtyChange] = useState(1);
+
+  // Stock Opname modal state
+  const [showOpnameModal, setShowOpnameModal] = useState(false);
+  const [opnameItemId, setOpnameItemId] = useState<string | null>(null);
 
   // Edit rack modal or inline state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -53,6 +83,19 @@ export default function StokTab({ items, mutations, onUpdateItemStock, onUpdateI
   const handleSaveRack = (itemId: string) => {
     onUpdateItemRack(itemId, tempRack);
     setEditingItemId(null);
+  };
+
+  const handleOpenOpname = (itemId?: string) => {
+    setOpnameItemId(itemId || null);
+    setShowOpnameModal(true);
+  };
+
+  const handleSaveOpname = (itemId: string, actualStock: number, pic: string, notes: string) => {
+    if (onStockOpname) {
+      onStockOpname(itemId, actualStock, pic, notes);
+    } else {
+      onUpdateItemStock(itemId, actualStock);
+    }
   };
 
   const handleScanSubmit = (e: React.FormEvent) => {
@@ -122,6 +165,31 @@ export default function StokTab({ items, mutations, onUpdateItemStock, onUpdateI
               </button>
             );
           })}
+        </div>
+
+        {/* Quick Action Banner: Manual Stock Opname / Koreksi Stok */}
+        <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-4 rounded-2xl border border-indigo-900/40 text-white shadow-sm flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center border border-indigo-500/30 shrink-0">
+              <ClipboardCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-display font-bold text-sm text-white">
+                Koreksi Stok (Opname Manual)
+              </h4>
+              <p className="text-[11px] text-slate-300">
+                Sesuaikan selisih fisik gudang dengan sistem
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleOpenOpname()}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 flex items-center gap-1.5 focus:outline-none"
+          >
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            <span>Mulai Opname</span>
+          </button>
         </div>
       </section>
 
@@ -196,6 +264,65 @@ export default function StokTab({ items, mutations, onUpdateItemStock, onUpdateI
                       </span>
                     </div>
                   </div>
+                </div>
+
+                {/* Item Location Rack & Quick Opname Actions */}
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Navigation className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="text-slate-500 font-medium text-[11px]">Lokasi:</span>
+                    {isEditingRack ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={tempRack}
+                          onChange={(e) => setTempRack(e.target.value)}
+                          className="w-20 px-2 py-0.5 text-xs bg-slate-50 border border-slate-300 rounded font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="Rak A-01"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveRack(itm.id)}
+                          className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                          title="Simpan Rak"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingItemId(null)}
+                          className="p-1 text-slate-400 hover:bg-slate-100 rounded"
+                          title="Batal"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                          {itm.rack || 'Belum diatur'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleEditRackStart(itm)}
+                          className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
+                          title="Ubah Rak"
+                        >
+                          <Edit className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenOpname(itm.id)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-[11px] transition-colors focus:outline-none shrink-0"
+                    title="Koreksi stok fisik barang ini (Stock Opname)"
+                  >
+                    <ClipboardCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Koreksi / Opname</span>
+                  </button>
                 </div>
 
                 {/* FORECASTING & ESTIMATION EXPANSION PANEL */}
@@ -428,6 +555,18 @@ export default function StokTab({ items, mutations, onUpdateItemStock, onUpdateI
           </div>
         </div>
       )}
+
+      {/* Manual Stock Opname / Discrepancy Correction Modal */}
+      <StockOpnameModal
+        isOpen={showOpnameModal}
+        onClose={() => {
+          setShowOpnameModal(false);
+          setOpnameItemId(null);
+        }}
+        items={items}
+        preselectedItemId={opnameItemId}
+        onSaveOpname={handleSaveOpname}
+      />
     </div>
   );
 }

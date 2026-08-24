@@ -557,6 +557,108 @@ export default function App() {
     saveNotificationToCloud(newNotif);
   };
 
+  // Handler to Edit/Correct a past transaction and accurately adjust physical stock
+  const handleEditMutation = (updatedMutation: StockMutation) => {
+    const oldMut = mutations.find((m) => m.id === updatedMutation.id);
+    if (!oldMut) return;
+
+    // Calculate delta on inventory stock
+    // For 'masuk': previously added oldMut.quantity, now we want updatedMutation.quantity => delta = (newQty - oldQty)
+    // For 'keluar': previously subtracted oldMut.quantity, now we want updatedMutation.quantity => delta = -(newQty - oldQty) = (oldQty - newQty)
+    const qtyDiff = updatedMutation.quantity - oldMut.quantity;
+    const stockDelta = updatedMutation.type === 'masuk' ? qtyDiff : -qtyDiff;
+
+    // Update mutations state & cloud
+    setMutations((prev) =>
+      prev.map((m) => (m.id === updatedMutation.id ? updatedMutation : m))
+    );
+    saveMutationToCloud(updatedMutation);
+
+    // Update item stock if quantity changed
+    if (stockDelta !== 0) {
+      setItems((prevItems) =>
+        prevItems.map((itm) => {
+          if (itm.id === updatedMutation.itemId) {
+            const newStock = Math.max(0, itm.stock + stockDelta);
+            const updatedItem = { ...itm, stock: newStock };
+            saveItemToCloud(updatedItem);
+            return updatedItem;
+          }
+          return itm;
+        })
+      );
+    }
+
+    // Trigger notification
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStrHour = `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
+    const newNotif: SystemNotification = {
+      id: `notif-edit-mut-${Date.now()}`,
+      title: '✏️ Transaksi Dikoreksi',
+      message: `Data transaksi ${updatedMutation.itemName} (${updatedMutation.type === 'masuk' ? 'Barang Masuk' : 'Barang Keluar'}) telah diperbarui menjadi ${updatedMutation.quantity} Pcs oleh ${updatedMutation.pic}.`,
+      type: 'info',
+      time: timeStrHour,
+      isRead: false,
+      linkToTab: updatedMutation.type === 'masuk' ? 'masuk' : 'keluar',
+    };
+    setNotifications((prevNotifs) => [newNotif, ...prevNotifs]);
+    saveNotificationToCloud(newNotif);
+  };
+
+  // Handler for Manual Stock Opname (physical inventory reconciliation)
+  const handleStockOpname = (itemId: string, actualStock: number, pic: string, notes: string) => {
+    const targetItem = items.find((i) => i.id === itemId);
+    if (!targetItem) return;
+
+    const oldStock = targetItem.stock;
+    const discrepancy = actualStock - oldStock; // positive if physical > system, negative if physical < system
+
+    // Update item stock in state & cloud
+    const updatedItem = { ...targetItem, stock: actualStock };
+    setItems((prevItems) =>
+      prevItems.map((itm) => (itm.id === itemId ? updatedItem : itm))
+    );
+    saveItemToCloud(updatedItem);
+
+    // If there is a discrepancy, log an Opname mutation record
+    if (discrepancy !== 0) {
+      const isSurplus = discrepancy > 0;
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const now = new Date();
+      const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+      const opnameMutation: StockMutation = {
+        id: `mut-opname-${Date.now()}`,
+        itemId: targetItem.id,
+        itemName: targetItem.name,
+        type: isSurplus ? 'masuk' : 'keluar',
+        quantity: Math.abs(discrepancy),
+        pic: `${pic || 'Admin'} (Opname: ${notes || (isSurplus ? 'Penyesuaian Fisik Lebih' : 'Penyesuaian Fisik Kurang')})`,
+        time: timeStr,
+        date: dateStr,
+      };
+
+      setMutations((prev) => [opnameMutation, ...prev]);
+      saveMutationToCloud(opnameMutation);
+    }
+
+    // Trigger Opname notification
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStrHour = `${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
+    const newNotif: SystemNotification = {
+      id: `notif-opname-${Date.now()}`,
+      title: '📋 Koreksi Stok (Opname) Selesai',
+      message: `Stok ${targetItem.name} disinkronkan dari ${oldStock} ke ${actualStock} Pcs oleh ${pic || 'Admin'}.${discrepancy !== 0 ? ` Selisih: ${discrepancy > 0 ? '+' : ''}${discrepancy} Pcs.` : ' Sesuai / Tidak ada selisih.'}`,
+      type: 'success',
+      time: timeStrHour,
+      isRead: false,
+      linkToTab: 'stok',
+    };
+    setNotifications((prevNotifs) => [newNotif, ...prevNotifs]);
+    saveNotificationToCloud(newNotif);
+  };
+
   // In-line edits directly from Stok scanner or coordinates
   const handleUpdateItemStock = (itemId: string, newStock: number) => {
     setItems((prev) =>
@@ -703,6 +805,7 @@ export default function App() {
             items={items}
             mutations={mutations}
             onAddMutation={handleAddMutation}
+            onEditMutation={handleEditMutation}
             onDeleteMutation={handleDeleteMutation}
             onDeleteMutations={handleBulkDeleteMutations}
             onNavigate={setActiveTab}
@@ -714,6 +817,7 @@ export default function App() {
             items={items}
             mutations={mutations}
             onAddMutation={handleAddMutation}
+            onEditMutation={handleEditMutation}
             onDeleteMutation={handleDeleteMutation}
             onDeleteMutations={handleBulkDeleteMutations}
             onNavigate={setActiveTab}
@@ -737,6 +841,7 @@ export default function App() {
             mutations={mutations}
             onUpdateItemStock={handleUpdateItemStock}
             onUpdateItemRack={handleUpdateItemRack}
+            onStockOpname={handleStockOpname}
           />
         )}
 
