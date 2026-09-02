@@ -55,25 +55,78 @@ export default function StokTab({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [tempRack, setTempRack] = useState('');
 
-  // Filtering logic
-  const getStockStatus = (stock: number): 'Kritis' | 'Rendah' | 'Aman' => {
-    if (stock <= 5) return 'Kritis';
-    if (stock <= 20) return 'Rendah';
-    return 'Aman';
+  // Proyeksi & Estimasi Health & Status Calculator per item
+  const getItemStockHealth = (itm: WarehouseItem) => {
+    // Calculate actual historical daily consumption rate for this specific item
+    const itemKeluarMutations = mutations.filter(m => m.itemId === itm.id && m.type === 'keluar');
+    const totalOutgoing = itemKeluarMutations.reduce((sum, m) => sum + m.quantity, 0);
+    const uniqueDates = Array.from(new Set(itemKeluarMutations.map(m => m.date)));
+    const activeDaysCount = uniqueDates.length;
+    const historicalAvg = activeDaysCount > 0 ? (totalOutgoing / activeDaysCount) : 0;
+
+    // Read current simulation rate, defaulting to historicalAvg if greater than 0, otherwise default to 0.
+    const currentRate = simulatedRates[itm.id] !== undefined
+      ? simulatedRates[itm.id]
+      : (historicalAvg > 0 ? Math.round(historicalAvg) : 0);
+
+    // If physical stock is 0 or less, immediately marked as 'Kritis'
+    if (itm.stock <= 0) {
+      return {
+        status: 'Kritis' as const,
+        estDays: 0,
+        currentRate,
+        historicalAvg,
+        totalOutgoing,
+        activeDaysCount,
+      };
+    }
+
+    // Days of stock remaining based on consumption rate
+    const estDays = currentRate > 0 ? Math.ceil(itm.stock / currentRate) : null;
+
+    let status: 'Kritis' | 'Rendah' | 'Aman' = 'Aman';
+    if (estDays !== null) {
+      if (estDays <= 3) {
+        status = 'Kritis'; // 1 - 3 hari (atau <= 3 hari)
+      } else if (estDays <= 7) {
+        status = 'Rendah'; // 4 - 7 hari
+      } else {
+        status = 'Aman';   // > 7 hari
+      }
+    } else {
+      // Jika laju pakai 0 (belum ada histori keluar & simulasi 0), stok aman selama fisik > 0
+      status = 'Aman';
+    }
+
+    return {
+      status,
+      estDays,
+      currentRate,
+      historicalAvg,
+      totalOutgoing,
+      activeDaysCount,
+    };
   };
 
-  const filteredItems = items.filter((itm) => {
-    const status = getStockStatus(itm.stock);
-    const matchesSearch =
-      itm.name.toLowerCase().includes(search.toLowerCase());
+  // Map items with their calculated stock projection health
+  const itemsWithHealth = items.map((itm) => ({
+    item: itm,
+    health: getItemStockHealth(itm),
+  }));
 
-    const matchesFilter = activeFilter === 'Semua' || status === activeFilter;
+  const kritisCount = itemsWithHealth.filter((x) => x.health.status === 'Kritis').length;
+  const rendahCount = itemsWithHealth.filter((x) => x.health.status === 'Rendah').length;
+  const amanCount = itemsWithHealth.filter((x) => x.health.status === 'Aman').length;
+
+  const filteredItemsWithHealth = itemsWithHealth.filter(({ item: itm, health }) => {
+    const matchesSearch = itm.name.toLowerCase().includes(search.toLowerCase());
+    const matchesFilter = activeFilter === 'Semua' || health.status === activeFilter;
     return matchesSearch && matchesFilter;
   });
 
   // Calculate dynamic summary stats
   const totalBarangQty = items.reduce((sum, itm) => sum + itm.stock, 0);
-  const perluRestockCount = items.filter((itm) => itm.stock <= 15).length;
+  const perluRestockCount = kritisCount + rendahCount;
 
   const handleEditRackStart = (itm: WarehouseItem) => {
     setEditingItemId(itm.id);
@@ -135,33 +188,57 @@ export default function StokTab({
         <div className="flex gap-2 overflow-x-auto no-scrollbar py-0.5 select-none" style={{ scrollbarWidth: 'none' }}>
           <button
             onClick={() => setActiveFilter('Semua')}
-            className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold whitespace-nowrap rounded-full transition-all focus:outline-none shadow-sm ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold whitespace-nowrap rounded-full transition-all focus:outline-none shadow-xs ${
               activeFilter === 'Semua'
                 ? 'bg-blue-600 text-white'
-                : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-800'
+                : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900'
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
-            <span>Semua</span>
+            <span>Semua ({items.length})</span>
           </button>
 
           {[
-            { id: 'Kritis', label: 'Kritis', color: 'bg-red-50 text-red-600 border border-red-200' },
-            { id: 'Rendah', label: 'Rendah', color: 'bg-amber-55 bg-indigo-50 text-blue-600 border border-blue-200' },
-            { id: 'Aman', label: 'Aman', color: 'bg-emerald-50 text-emerald-600 border border-emerald-200' },
+            { 
+              id: 'Kritis', 
+              label: 'Kritis', 
+              count: kritisCount,
+              badgeClass: 'bg-red-50 text-red-700 border-red-200', 
+              tag: '1-3 Hari' 
+            },
+            { 
+              id: 'Rendah', 
+              label: 'Rendah', 
+              count: rendahCount,
+              badgeClass: 'bg-amber-50 text-amber-700 border-amber-200', 
+              tag: '4-7 Hari' 
+            },
+            { 
+              id: 'Aman', 
+              label: 'Aman', 
+              count: amanCount,
+              badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200', 
+              tag: '>7 Hari' 
+            },
           ].map((flt) => {
             const isActive = activeFilter === flt.id;
             return (
               <button
                 key={flt.id}
                 onClick={() => setActiveFilter(flt.id as any)}
-                className={`px-4 py-2 text-xs font-bold whitespace-nowrap rounded-full transition-all focus:outline-none shadow-sm ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold whitespace-nowrap rounded-full transition-all focus:outline-none shadow-xs ${
                   isActive
-                    ? 'bg-blue-600 text-white'
-                    : `bg-white text-slate-500 border border-slate-200 hover:text-slate-800`
+                    ? 'bg-slate-900 text-white ring-2 ring-slate-900/20'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:text-slate-900 hover:border-slate-300'
                 }`}
               >
-                {flt.label}
+                <span>{flt.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                  isActive ? 'bg-white/20 text-white' : flt.badgeClass
+                }`}>
+                  {flt.count}
+                </span>
+                <span className="text-[9px] font-normal opacity-70">({flt.tag})</span>
               </button>
             );
           })}
@@ -195,29 +272,28 @@ export default function StokTab({
 
       {/* Stock Cards Grid Item list */}
       <div className="grid gap-3">
-        {filteredItems.length === 0 ? (
+        {filteredItemsWithHealth.length === 0 ? (
           <div className="p-8 text-center bg-white rounded-2xl border border-slate-150 text-slate-400 text-sm">
             Tidak ada item stok yang cocok.
           </div>
         ) : (
-          filteredItems.map((itm) => {
-            const status = getStockStatus(itm.stock);
+          filteredItemsWithHealth.map(({ item: itm, health }) => {
+            const { status, estDays, currentRate, historicalAvg, totalOutgoing, activeDaysCount } = health;
             let borderStyle = '';
             let bgBadge = '';
-            let textBadge = '';
             let statusIcon = null;
 
             if (status === 'Kritis') {
               borderStyle = 'border-l-4 border-l-red-500';
-              bgBadge = 'bg-red-50 text-red-700 border border-red-100';
+              bgBadge = 'bg-red-50 text-red-700 border border-red-200';
               statusIcon = <ShieldAlert className="w-3 h-3 text-red-500" />;
             } else if (status === 'Rendah') {
-              borderStyle = 'border-l-4 border-l-blue-500';
-              bgBadge = 'bg-blue-50 text-blue-700 border border-blue-100';
-              statusIcon = <AlertTriangle className="w-3 h-3 text-blue-500" />;
+              borderStyle = 'border-l-4 border-l-amber-500';
+              bgBadge = 'bg-amber-50 text-amber-700 border border-amber-200';
+              statusIcon = <AlertTriangle className="w-3 h-3 text-amber-500" />;
             } else {
               borderStyle = 'border-l-4 border-l-emerald-500';
-              bgBadge = 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+              bgBadge = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
               statusIcon = <CheckCircle className="w-3 h-3 text-emerald-500" />;
             }
 
@@ -251,9 +327,9 @@ export default function StokTab({
                       <span
                         className={`text-2xl font-black font-display tracking-tight leading-none ${
                           status === 'Kritis'
-                            ? 'text-red-650 text-red-600'
+                            ? 'text-red-600'
                             : status === 'Rendah'
-                            ? 'text-blue-600'
+                            ? 'text-amber-600'
                             : 'text-emerald-600'
                         }`}
                       >
@@ -326,109 +402,90 @@ export default function StokTab({
                 </div>
 
                 {/* FORECASTING & ESTIMATION EXPANSION PANEL */}
-                {(() => {
-                  // Calculate actual historical daily consumption rate for this specific item
-                  const itemKeluarMutations = mutations.filter(m => m.itemId === itm.id && m.type === 'keluar');
-                  const totalOutgoing = itemKeluarMutations.reduce((sum, m) => sum + m.quantity, 0);
-                  const uniqueDates = Array.from(new Set(itemKeluarMutations.map(m => m.date)));
-                  const activeDaysCount = uniqueDates.length;
-                  const historicalAvg = activeDaysCount > 0 ? (totalOutgoing / activeDaysCount) : 0;
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-2 mt-1">
+                  {/* Sub header for forecasting */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[10px] uppercase tracking-wider">
+                      <TrendingUp className="w-3 h-3 text-indigo-500" />
+                      <span>Proyeksi & Estimasi Stok</span>
+                    </div>
+                    {historicalAvg > 0 && (
+                      <span className="text-[8px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded font-bold font-mono">
+                        HISTORI AKTIF
+                      </span>
+                    )}
+                  </div>
 
-                  // Read current simulation rate, defaulting to historicalAvg if greater than 0, otherwise default to 0.
-                  const currentRate = simulatedRates[itm.id] !== undefined
-                    ? simulatedRates[itm.id]
-                    : (historicalAvg > 0 ? Math.round(historicalAvg) : 0);
-
-                  // Days of stock remaining based on rate
-                  const estDays = currentRate > 0 ? Math.ceil(itm.stock / currentRate) : null;
-
-                  return (
-                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-2 mt-1">
-                      {/* Sub header for forecasting */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[10px] uppercase tracking-wider">
-                          <TrendingUp className="w-3 h-3 text-indigo-500" />
-                          <span>Proyeksi & Estimasi Stok</span>
-                        </div>
-                        {historicalAvg > 0 && (
-                          <span className="text-[8px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded font-bold font-mono">
-                            HISTORI AKTIF
-                          </span>
-                        )}
+                  {/* Interactive controllers */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                    {/* Custom rate slider adjustment */}
+                    <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
+                      <span className="text-[11px] text-slate-400 font-medium">Laju Pakai:</span>
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const nextVal = Math.max(0, currentRate - 1);
+                            setSimulatedRates(prev => ({ ...prev, [itm.id]: nextVal }));
+                          }}
+                          className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold rounded-md select-none transition-colors focus:outline-none"
+                          title="Kurangi Laju"
+                        >
+                          -
+                        </button>
+                        <span className="text-[11px] font-mono font-bold text-slate-700 w-20 text-center select-none">
+                          {currentRate} Pcs/hari
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const nextVal = currentRate + 1;
+                            setSimulatedRates(prev => ({ ...prev, [itm.id]: nextVal }));
+                          }}
+                          className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold rounded-md select-none transition-colors focus:outline-none"
+                          title="Tambah Laju"
+                        >
+                          +
+                        </button>
                       </div>
+                    </div>
 
-                      {/* Interactive controllers */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-100 pt-2">
-                        {/* Custom rate slider adjustment */}
-                        <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
-                          <span className="text-[11px] text-slate-400 font-medium">Laju Pakai:</span>
-                          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const nextVal = Math.max(0, currentRate - 1);
-                                setSimulatedRates(prev => ({ ...prev, [itm.id]: nextVal }));
-                              }}
-                              className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold rounded-md select-none transition-colors focus:outline-none"
-                              title="Kurangi Laju"
-                            >
-                              -
-                            </button>
-                            <span className="text-[11px] font-mono font-bold text-slate-700 w-20 text-center select-none">
-                              {currentRate} Pcs/hari
-                            </span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const nextVal = currentRate + 1;
-                                setSimulatedRates(prev => ({ ...prev, [itm.id]: nextVal }));
-                              }}
-                              className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold rounded-md select-none transition-colors focus:outline-none"
-                              title="Tambah Laju"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Forecast indicator output */}
-                        <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pb-1 sm:pb-0">
-                          <span className="text-[11px] text-slate-400 font-medium">Sisa Hari:</span>
-                          {estDays !== null ? (
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
-                              estDays <= 3
-                                ? 'bg-red-50 border-red-150 text-red-700 animate-pulse'
-                                : estDays <= 10
-                                ? 'bg-amber-50 border-amber-150 text-amber-700'
-                                : 'bg-emerald-50 border-emerald-150 text-emerald-700'
-                            }`}>
-                              <Clock className="w-3 h-3 text-slate-500 shrink-0" />
-                              <span>± {estDays} Hari</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-400 border border-slate-200">
-                              <HelpCircle className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span>Laju Pakai Nol</span>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Micro footnotes info block */}
-                      {historicalAvg > 0 ? (
-                        <p className="text-[9px] text-slate-400 leading-normal font-sans pt-1 border-t border-slate-100/60 italic">
-                          * Terhitung dari histori keluar: total <strong>{totalOutgoing} Pcs</strong> dalam <strong>{activeDaysCount} hari aktif</strong> (rata-rata <strong>{Math.round(historicalAvg * 10) / 10} Pcs/hari</strong>).
-                        </p>
+                    {/* Forecast indicator output */}
+                    <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pb-1 sm:pb-0">
+                      <span className="text-[11px] text-slate-400 font-medium">Sisa Hari:</span>
+                      {estDays !== null ? (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          estDays <= 3
+                            ? 'bg-red-50 border-red-200 text-red-700 animate-pulse'
+                            : estDays <= 7
+                            ? 'bg-amber-50 border-amber-200 text-amber-700'
+                            : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        }`}>
+                          <Clock className="w-3 h-3 text-slate-500 shrink-0" />
+                          <span>± {estDays} Hari</span>
+                        </span>
                       ) : (
-                        <p className="text-[9px] text-slate-400 leading-normal font-sans pt-1 border-t border-slate-100/60 italic">
-                          * Belum ada histori keluar. Silakan klik tombol [+] untuk melakukan simulasi.
-                        </p>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                          <HelpCircle className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span>Laju Pakai Nol</span>
+                        </span>
                       )}
                     </div>
-                  );
-                })()}
+                  </div>
+
+                  {/* Micro footnotes info block */}
+                  {historicalAvg > 0 ? (
+                    <p className="text-[9px] text-slate-400 leading-normal font-sans pt-1 border-t border-slate-100/60 italic">
+                      * Terhitung dari histori keluar: total <strong>{totalOutgoing} Pcs</strong> dalam <strong>{activeDaysCount} hari aktif</strong> (rata-rata <strong>{Math.round(historicalAvg * 10) / 10} Pcs/hari</strong>).
+                    </p>
+                  ) : (
+                    <p className="text-[9px] text-slate-400 leading-normal font-sans pt-1 border-t border-slate-100/60 italic">
+                      * Belum ada histori keluar. Silakan klik tombol [+] untuk melakukan simulasi.
+                    </p>
+                  )}
+                </div>
               </div>
             );
           })
