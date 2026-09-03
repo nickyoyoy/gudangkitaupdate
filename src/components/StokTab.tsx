@@ -16,7 +16,10 @@ import {
   Clock, 
   HelpCircle,
   ClipboardCheck,
-  Layers
+  Layers,
+  Cloud,
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import { WarehouseItem, StockMutation } from '../types';
 import StockOpnameModal from './StockOpnameModal';
@@ -27,6 +30,7 @@ interface StokTabProps {
   onUpdateItemStock: (itemId: string, newStock: number) => void;
   onUpdateItemRack: (itemId: string, newRack: string) => void;
   onStockOpname?: (itemId: string, actualStock: number, pic: string, notes: string) => void;
+  onUpdateItemTargetRate?: (itemId: string, newRate: number | null) => void;
 }
 
 export default function StokTab({ 
@@ -34,13 +38,15 @@ export default function StokTab({
   mutations, 
   onUpdateItemStock, 
   onUpdateItemRack,
-  onStockOpname 
+  onStockOpname,
+  onUpdateItemTargetRate
 }: StokTabProps) {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<'Semua' | 'Kritis' | 'Rendah' | 'Aman'>('Semua');
 
   // Simulation rates for each item code: {[itemId]: ratePerDay}
   const [simulatedRates, setSimulatedRates] = useState<Record<string, number>>({});
+  const [justSavedItemId, setJustSavedItemId] = useState<string | null>(null);
 
   // Scanner modal state
   const [showScanner, setShowScanner] = useState(false);
@@ -55,6 +61,32 @@ export default function StokTab({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [tempRack, setTempRack] = useState('');
 
+  const handleSaveTargetRate = (itemId: string, rate: number) => {
+    if (onUpdateItemTargetRate) {
+      onUpdateItemTargetRate(itemId, rate);
+      setJustSavedItemId(itemId);
+      setTimeout(() => {
+        setJustSavedItemId(null);
+      }, 2500);
+      setSimulatedRates((prev) => {
+        const copy = { ...prev };
+        delete copy[itemId];
+        return copy;
+      });
+    }
+  };
+
+  const handleResetToAuto = (itemId: string) => {
+    if (onUpdateItemTargetRate) {
+      onUpdateItemTargetRate(itemId, null);
+      setSimulatedRates((prev) => {
+        const copy = { ...prev };
+        delete copy[itemId];
+        return copy;
+      });
+    }
+  };
+
   // Proyeksi & Estimasi Health & Status Calculator per item
   const getItemStockHealth = (itm: WarehouseItem) => {
     // Calculate actual historical daily consumption rate for this specific item
@@ -64,10 +96,23 @@ export default function StokTab({
     const activeDaysCount = uniqueDates.length;
     const historicalAvg = activeDaysCount > 0 ? (totalOutgoing / activeDaysCount) : 0;
 
-    // Read current simulation rate, defaulting to historicalAvg if greater than 0, otherwise default to 0.
+    // Check if item has a custom target daily rate saved in Firebase
+    const hasCustomTarget = itm.targetDailyRate !== undefined && itm.targetDailyRate !== null;
+
+    // Default rate: if targetDailyRate is set, use it; else if historicalAvg > 0, round(historicalAvg); else 0
+    const defaultRate = hasCustomTarget 
+      ? itm.targetDailyRate! 
+      : (historicalAvg > 0 ? Math.round(historicalAvg) : 0);
+
+    // Read current rate (either temporary in simulatedRates or the defaultRate)
     const currentRate = simulatedRates[itm.id] !== undefined
       ? simulatedRates[itm.id]
-      : (historicalAvg > 0 ? Math.round(historicalAvg) : 0);
+      : defaultRate;
+
+    // Is the currently displayed rate different from what is saved in Firestore?
+    const isRateModified = hasCustomTarget 
+      ? currentRate !== itm.targetDailyRate
+      : (historicalAvg > 0 ? currentRate !== Math.round(historicalAvg) : currentRate > 0);
 
     // If physical stock is 0 or less, immediately marked as 'Kritis'
     if (itm.stock <= 0) {
@@ -78,6 +123,8 @@ export default function StokTab({
         historicalAvg,
         totalOutgoing,
         activeDaysCount,
+        hasCustomTarget,
+        isRateModified,
       };
     }
 
@@ -105,6 +152,8 @@ export default function StokTab({
       historicalAvg,
       totalOutgoing,
       activeDaysCount,
+      hasCustomTarget,
+      isRateModified,
     };
   };
 
@@ -402,26 +451,53 @@ export default function StokTab({
                 </div>
 
                 {/* FORECASTING & ESTIMATION EXPANSION PANEL */}
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-2 mt-1">
-                  {/* Sub header for forecasting */}
-                  <div className="flex items-center justify-between">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2.5 mt-1">
+                  {/* Sub header for forecasting with Cloud badge and Reset action */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[10px] uppercase tracking-wider">
-                      <TrendingUp className="w-3 h-3 text-indigo-500" />
+                      <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
                       <span>Proyeksi & Estimasi Stok</span>
                     </div>
-                    {historicalAvg > 0 && (
-                      <span className="text-[8px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded font-bold font-mono">
-                        HISTORI AKTIF
-                      </span>
-                    )}
+
+                    <div className="flex items-center gap-1.5">
+                      {health.hasCustomTarget ? (
+                        <div className="flex items-center gap-1.5">
+                          <span 
+                            className="text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold font-mono inline-flex items-center gap-1 shadow-2xs"
+                            title="Laju pakai ini dikunci dan tersimpan permanen di cloud Firebase"
+                          >
+                            <Cloud className="w-2.5 h-2.5 text-emerald-600" />
+                            TARGET TETAP: {itm.targetDailyRate} Pcs/hari
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleResetToAuto(itm.id)}
+                            className="text-[9px] text-slate-500 hover:text-red-600 bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 px-1.5 py-0.5 rounded-md font-medium inline-flex items-center gap-0.5 transition-colors focus:outline-none"
+                            title="Hapus target tetap dan kembalikan ke rata-rata histori keluar otomatis"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" />
+                            <span>Reset Histori</span>
+                          </button>
+                        </div>
+                      ) : historicalAvg > 0 ? (
+                        <span className="text-[8px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded font-bold font-mono">
+                          HISTORI OTOMATIS
+                        </span>
+                      ) : (
+                        <span className="text-[8px] text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded font-medium font-mono">
+                          BELUM DIATUR
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Interactive controllers */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-100 pt-2">
-                    {/* Custom rate slider adjustment */}
-                    <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
-                      <span className="text-[11px] text-slate-400 font-medium">Laju Pakai:</span>
-                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-t border-slate-200/60 pt-2.5">
+                    {/* Custom rate input & stepper */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] text-slate-500 font-medium">Laju Pakai:</span>
+                      
+                      <div className="flex items-center bg-white border border-slate-300 rounded-lg p-0.5 shadow-xs focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-400">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -429,14 +505,36 @@ export default function StokTab({
                             const nextVal = Math.max(0, currentRate - 1);
                             setSimulatedRates(prev => ({ ...prev, [itm.id]: nextVal }));
                           }}
-                          className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold rounded-md select-none transition-colors focus:outline-none"
-                          title="Kurangi Laju"
+                          className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold rounded-md select-none transition-colors focus:outline-none"
+                          title="Kurangi 1 Pcs/hari"
                         >
                           -
                         </button>
-                        <span className="text-[11px] font-mono font-bold text-slate-700 w-20 text-center select-none">
-                          {currentRate} Pcs/hari
-                        </span>
+
+                        <div className="flex items-center px-1">
+                          <input
+                            type="number"
+                            min="0"
+                            max="99999"
+                            value={currentRate}
+                            onChange={(e) => {
+                              const parsed = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                              const val = isNaN(parsed) ? 0 : Math.max(0, parsed);
+                              setSimulatedRates(prev => ({ ...prev, [itm.id]: val }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveTargetRate(itm.id, currentRate);
+                              }
+                            }}
+                            className="w-12 text-center font-mono font-bold text-slate-800 text-xs py-0.5 px-0.5 border-0 focus:outline-none bg-transparent"
+                            title="Ketik angka (misal: 100) lalu klik Simpan Target"
+                          />
+                          <span className="text-[10px] text-slate-400 font-medium ml-0.5 select-none pointer-events-none">
+                            Pcs/hr
+                          </span>
+                        </div>
+
                         <button
                           type="button"
                           onClick={(e) => {
@@ -444,19 +542,52 @@ export default function StokTab({
                             const nextVal = currentRate + 1;
                             setSimulatedRates(prev => ({ ...prev, [itm.id]: nextVal }));
                           }}
-                          className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold rounded-md select-none transition-colors focus:outline-none"
-                          title="Tambah Laju"
+                          className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold rounded-md select-none transition-colors focus:outline-none"
+                          title="Tambah 1 Pcs/hari"
                         >
                           +
                         </button>
                       </div>
+
+                      {/* Save Button / Cloud Sync Status */}
+                      {justSavedItemId === itm.id ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold animate-in fade-in">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>Tersimpan di Cloud!</span>
+                        </span>
+                      ) : health.isRateModified ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveTargetRate(itm.id, currentRate)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[10px] shadow-xs transition-all focus:outline-none cursor-pointer"
+                          title="Simpan angka laju pakai ini permanen ke database Firebase"
+                        >
+                          <Save className="w-3 h-3" />
+                          <span>Simpan Target ({currentRate})</span>
+                        </button>
+                      ) : health.hasCustomTarget ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 select-none">
+                          <Cloud className="w-3 h-3 text-emerald-600" />
+                          <span className="hidden sm:inline">Permanen di Cloud</span>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveTargetRate(itm.id, currentRate)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 border border-slate-200 rounded-lg font-medium text-[10px] transition-colors focus:outline-none cursor-pointer"
+                          title="Kunci angka ini sebagai target tetap di Firebase"
+                        >
+                          <Cloud className="w-3 h-3 text-slate-400" />
+                          <span>Kunci Laju</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Forecast indicator output */}
                     <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pb-1 sm:pb-0">
-                      <span className="text-[11px] text-slate-400 font-medium">Sisa Hari:</span>
+                      <span className="text-[11px] text-slate-500 font-medium">Sisa Hari:</span>
                       {estDays !== null ? (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                           estDays <= 3
                             ? 'bg-red-50 border-red-200 text-red-700 animate-pulse'
                             : estDays <= 7
@@ -467,7 +598,7 @@ export default function StokTab({
                           <span>± {estDays} Hari</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
                           <HelpCircle className="w-3 h-3 text-slate-400 shrink-0" />
                           <span>Laju Pakai Nol</span>
                         </span>
@@ -476,13 +607,17 @@ export default function StokTab({
                   </div>
 
                   {/* Micro footnotes info block */}
-                  {historicalAvg > 0 ? (
-                    <p className="text-[9px] text-slate-400 leading-normal font-sans pt-1 border-t border-slate-100/60 italic">
-                      * Terhitung dari histori keluar: total <strong>{totalOutgoing} Pcs</strong> dalam <strong>{activeDaysCount} hari aktif</strong> (rata-rata <strong>{Math.round(historicalAvg * 10) / 10} Pcs/hari</strong>).
+                  {health.hasCustomTarget ? (
+                    <p className="text-[9px] text-slate-500 leading-normal font-sans pt-1 border-t border-slate-200/60">
+                      💡 <strong>Target tetap aktif:</strong> Menggunakan patokan <strong>{itm.targetDailyRate} Pcs/hari</strong> yang tersimpan di cloud database. {historicalAvg > 0 && `(Histori riwayat keluar: rata-rata ${Math.round(historicalAvg * 10) / 10} Pcs/hari dari total ${totalOutgoing} Pcs).`}
+                    </p>
+                  ) : historicalAvg > 0 ? (
+                    <p className="text-[9px] text-slate-400 leading-normal font-sans pt-1 border-t border-slate-200/60 italic">
+                      * Terhitung dari histori keluar: total <strong>{totalOutgoing} Pcs</strong> dalam <strong>{activeDaysCount} hari aktif</strong> (rata-rata <strong>{Math.round(historicalAvg * 10) / 10} Pcs/hari</strong>). Anda dapat mengetik angka genap (misal: 100) lalu klik <strong>Simpan Target</strong> agar tersimpan permanen di cloud.
                     </p>
                   ) : (
-                    <p className="text-[9px] text-slate-400 leading-normal font-sans pt-1 border-t border-slate-100/60 italic">
-                      * Belum ada histori keluar. Silakan klik tombol [+] untuk melakukan simulasi.
+                    <p className="text-[9px] text-slate-400 leading-normal font-sans pt-1 border-t border-slate-200/60 italic">
+                      * Belum ada histori keluar. Silakan ketik angka target laju pakai lalu klik <strong>Simpan Target</strong>.
                     </p>
                   )}
                 </div>

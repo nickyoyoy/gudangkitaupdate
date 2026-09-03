@@ -11,7 +11,8 @@
         "category": { "type": "string" },
         "rack": { "type": "string" },
         "stock": { "type": "number" },
-        "initialStock": { "type": "number" }
+        "initialStock": { "type": "number" },
+        "targetDailyRate": { "type": "number" }
       },
       "required": ["id", "sku", "name", "category", "rack", "stock"]
     },

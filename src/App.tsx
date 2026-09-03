@@ -686,6 +686,24 @@ export default function App() {
     );
   };
 
+  const handleUpdateItemTargetRate = (itemId: string, newRate: number | null) => {
+    setItems((prev) =>
+      prev.map((itm) => {
+        if (itm.id === itemId) {
+          const updated = { ...itm };
+          if (newRate === null || newRate === undefined || isNaN(newRate) || newRate <= 0) {
+            delete updated.targetDailyRate;
+          } else {
+            updated.targetDailyRate = Math.round(newRate);
+          }
+          saveItemToCloud(updated);
+          return updated;
+        }
+        return itm;
+      })
+    );
+  };
+
   const handleBackToHome = () => {
     setActiveTab('home');
   };
@@ -842,6 +860,7 @@ export default function App() {
             onUpdateItemStock={handleUpdateItemStock}
             onUpdateItemRack={handleUpdateItemRack}
             onStockOpname={handleStockOpname}
+            onUpdateItemTargetRate={handleUpdateItemTargetRate}
           />
         )}
 

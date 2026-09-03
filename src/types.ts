@@ -6,6 +6,7 @@ export interface WarehouseItem {
   rack: string;
   stock: number;
   initialStock?: number;
+  targetDailyRate?: number; // Custom target consumption rate (Pcs/hari) persisted in Firestore
 }
 
 export interface StockMutation {
