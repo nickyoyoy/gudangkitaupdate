@@ -1,18 +1,27 @@
 // Firestore Rules for GudangKita
+// SECURITY: deny anonymous access. GudangKita clients must authenticate with Firebase Auth.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
     match /items/{document} {
-      allow read, write: if true;
+      allow read, write: if signedIn();
     }
     match /mutations/{document} {
-      allow read, write: if true;
+      allow read, write: if signedIn();
     }
     match /preorders/{document} {
-      allow read, write: if true;
+      allow read, write: if signedIn();
     }
     match /notifications/{document} {
-      allow read, write: if true;
+      allow read, write: if signedIn();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
