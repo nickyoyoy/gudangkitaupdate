@@ -122,7 +122,7 @@ export default function BerandaTab({ items, mutations, onNavigate, onDeleteMutat
               Belum ada aktivitas mutasi hari ini.
             </div>
           ) : (
-            mutations.map((mut) => {
+            mutations.slice(0, 5).map((mut) => {
               const isMasuk = mut.type === 'masuk';
               return (
                 <div
