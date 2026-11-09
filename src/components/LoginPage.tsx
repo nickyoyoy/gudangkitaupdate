@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Warehouse, Eye, EyeOff, Lock, User as UserIcon, AlertCircle } from 'lucide-react';
 import { UserSession } from '../types';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
 interface LoginPageProps {
   onLoginSuccess: (user: UserSession) => void;
@@ -13,37 +15,44 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsLoading(true);
 
     const trimmedUsername = username.trim().toLowerCase();
+    const allowedUsers: Record<string, { email: string; name: string; role: 'admin' | 'user' }> = {
+      office: {
+        email: import.meta.env.VITE_OFFICE_AUTH_EMAIL || 'office@gudangkita.internal',
+        name: 'Office (Admin)',
+        role: 'admin',
+      },
+      gudang: {
+        email: import.meta.env.VITE_GUDANG_AUTH_EMAIL || 'gudang@gudangkita.internal',
+        name: 'PIC (Gudang)',
+        role: 'user',
+      },
+    };
 
-    // Check credentials
-    if (trimmedUsername === 'office' && password === 'officesc*1') {
-      setIsLoading(true);
-      setTimeout(() => {
-        onLoginSuccess({
-          username: 'office',
-          name: 'Office (Admin)',
-          role: 'admin',
-          avatarUrl: '',
-        });
-        setIsLoading(false);
-      }, 600);
-    } else if (trimmedUsername === 'gudang' && password === 'gudangsc1*') {
-      setIsLoading(true);
-      setTimeout(() => {
-        onLoginSuccess({
-          username: 'gudang',
-          name: 'PIC (Gudang)',
-          role: 'user',
-          avatarUrl: '',
-        });
-        setIsLoading(false);
-      }, 600);
-    } else {
+    const profile = allowedUsers[trimmedUsername];
+    if (!profile) {
       setError('Username atau password yang Anda masukkan salah. Silakan coba lagi.');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth, profile.email, password);
+      onLoginSuccess({
+        username: trimmedUsername,
+        name: profile.name,
+        role: profile.role,
+        avatarUrl: '',
+      });
+    } catch {
+      setError('Username atau password yang Anda masukkan salah. Silakan coba lagi.');
+    } finally {
+      setIsLoading(false);
     }
   };
 

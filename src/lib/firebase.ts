@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { 
   initializeFirestore, 
   collection, 
@@ -36,6 +37,10 @@ import { WarehouseItem, StockMutation, PreOrder, SystemNotification } from '../t
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Firebase Authentication is the security boundary for GudangKita.
+// User accounts are managed in Firebase Console; passwords are never stored in source code.
+export const auth = getAuth(app);
 
 // Initialize Firestore with custom database ID from configuration
 export const db = initializeFirestore(app, {}, firebaseConfig.firestoreDatabaseId || '(default)');
