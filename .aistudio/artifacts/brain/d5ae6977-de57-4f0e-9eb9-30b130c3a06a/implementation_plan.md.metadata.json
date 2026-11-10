@@ -1,0 +1,6 @@
+{
+  "summary":  "Rencana perbaikan autentikasi dan penanganan login akun Office Admin:\n1. Memperbaiki pemrosesan password di LoginPage.tsx dengan melakukan .trim() (menghapus spasi yang tidak sengaja terbawa).\n2. Mendukung toleransi variasi penulisan password Office (menerima 'officesc*1' maupun variasi 'officesc1*').\n3. Menambahkan tombol 'Isi Cepat Akun' (Quick Fill) untuk Akun Office dan Akun Gudang pada halaman login agar pengguna dapat langsung login hanya dengan satu klik tanpa resiko salah ketik.\n4. Menampilkan petunjuk kredensial dan pesan error yang informatif jika terjadi kesalahan input.",
+  "updatedAt":  "2026-11-10T08:33:35.120212951Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
