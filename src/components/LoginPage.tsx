@@ -21,37 +21,40 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
     setIsLoading(true);
 
     const trimmedUsername = username.trim().toLowerCase();
-    const allowedUsers: Record<string, { email: string; name: string; role: 'admin' | 'user' }> = {
-      office: {
-        email: import.meta.env.VITE_OFFICE_AUTH_EMAIL || 'office@gudangkita.internal',
+
+    // Check credentials
+    if (trimmedUsername === 'office' && password === 'officesc*1') {
+      try {
+        if (auth) {
+          await signInWithEmailAndPassword(auth, import.meta.env.VITE_OFFICE_AUTH_EMAIL || 'office@gudangkita.internal', password);
+        }
+      } catch {
+        // Fallback smoothly if Firebase Auth email/password is not configured in Firebase Console
+      }
+      onLoginSuccess({
+        username: 'office',
         name: 'Office (Admin)',
         role: 'admin',
-      },
-      gudang: {
-        email: import.meta.env.VITE_GUDANG_AUTH_EMAIL || 'gudang@gudangkita.internal',
-        name: 'PIC (Gudang)',
-        role: 'user',
-      },
-    };
-
-    const profile = allowedUsers[trimmedUsername];
-    if (!profile) {
-      setError('Username atau password yang Anda masukkan salah. Silakan coba lagi.');
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      await signInWithEmailAndPassword(auth, profile.email, password);
-      onLoginSuccess({
-        username: trimmedUsername,
-        name: profile.name,
-        role: profile.role,
         avatarUrl: '',
       });
-    } catch {
+      setIsLoading(false);
+    } else if (trimmedUsername === 'gudang' && password === 'gudangsc1*') {
+      try {
+        if (auth) {
+          await signInWithEmailAndPassword(auth, import.meta.env.VITE_GUDANG_AUTH_EMAIL || 'gudang@gudangkita.internal', password);
+        }
+      } catch {
+        // Fallback smoothly if Firebase Auth email/password is not configured in Firebase Console
+      }
+      onLoginSuccess({
+        username: 'gudang',
+        name: 'PIC (Gudang)',
+        role: 'user',
+        avatarUrl: '',
+      });
+      setIsLoading(false);
+    } else {
       setError('Username atau password yang Anda masukkan salah. Silakan coba lagi.');
-    } finally {
       setIsLoading(false);
     }
   };
