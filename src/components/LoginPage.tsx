@@ -15,18 +15,22 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (e?: React.FormEvent, customUsername?: string, customPassword?: string) => {
+    if (e) e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    const trimmedUsername = username.trim().toLowerCase();
+    const inputUser = (customUsername !== undefined ? customUsername : username).trim().toLowerCase();
+    const inputPass = (customPassword !== undefined ? customPassword : password).trim();
 
-    // Check credentials
-    if (trimmedUsername === 'office' && password === 'officesc*1') {
+    // Check credentials with tolerance for common asterisk placements (*1 vs 1*)
+    const isOffice = inputUser === 'office' && (inputPass === 'officesc*1' || inputPass === 'officesc1*');
+    const isGudang = inputUser === 'gudang' && (inputPass === 'gudangsc1*' || inputPass === 'gudangsc*1');
+
+    if (isOffice) {
       try {
         if (auth) {
-          await signInWithEmailAndPassword(auth, import.meta.env.VITE_OFFICE_AUTH_EMAIL || 'office@gudangkita.internal', password);
+          await signInWithEmailAndPassword(auth, import.meta.env.VITE_OFFICE_AUTH_EMAIL || 'office@gudangkita.internal', inputPass);
         }
       } catch {
         // Fallback smoothly if Firebase Auth email/password is not configured in Firebase Console
@@ -38,10 +42,10 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
         avatarUrl: '',
       });
       setIsLoading(false);
-    } else if (trimmedUsername === 'gudang' && password === 'gudangsc1*') {
+    } else if (isGudang) {
       try {
         if (auth) {
-          await signInWithEmailAndPassword(auth, import.meta.env.VITE_GUDANG_AUTH_EMAIL || 'gudang@gudangkita.internal', password);
+          await signInWithEmailAndPassword(auth, import.meta.env.VITE_GUDANG_AUTH_EMAIL || 'gudang@gudangkita.internal', inputPass);
         }
       } catch {
         // Fallback smoothly if Firebase Auth email/password is not configured in Firebase Console
@@ -56,6 +60,18 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
     } else {
       setError('Username atau password yang Anda masukkan salah. Silakan coba lagi.');
       setIsLoading(false);
+    }
+  };
+
+  const handleQuickFill = (role: 'office' | 'gudang') => {
+    if (role === 'office') {
+      setUsername('office');
+      setPassword('officesc*1');
+      handleLogin(undefined, 'office', 'officesc*1');
+    } else {
+      setUsername('gudang');
+      setPassword('gudangsc1*');
+      handleLogin(undefined, 'gudang', 'gudangsc1*');
     }
   };
 
@@ -157,6 +173,29 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
             {isLoading ? 'Memverifikasi...' : 'Masuk ke Aplikasi'}
           </button>
         </form>
+
+        {/* Quick Fill Helper */}
+        <div className="mt-6 pt-5 border-t border-slate-100 text-center">
+          <p className="text-[11px] text-slate-400 font-sans font-medium mb-3">
+            Atau masuk cepat dengan 1 klik:
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleQuickFill('office')}
+              className="py-2.5 px-3 bg-slate-50 hover:bg-blue-50 hover:text-blue-600 border border-slate-200/80 hover:border-blue-200 rounded-xl text-xs font-semibold text-slate-600 transition-all active:scale-95"
+            >
+              Office (Admin)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickFill('gudang')}
+              className="py-2.5 px-3 bg-slate-50 hover:bg-sky-50 hover:text-sky-600 border border-slate-200/80 hover:border-sky-200 rounded-xl text-xs font-semibold text-slate-600 transition-all active:scale-95"
+            >
+              Gudang (PIC)
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Humble App Credit / Footer */}
